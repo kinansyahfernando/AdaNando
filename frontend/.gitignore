@@ -46,4 +46,9 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Environment Variables (PENTING: Jangan sampai ter-upload)
 .env
+
+# Node modules (jika tidak sengaja terbuat di frontend)
+node_modules/
