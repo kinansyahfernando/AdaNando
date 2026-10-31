@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'register_page.dart';
+import '../../../student_dashboard/presentation/pages/student_dashboard_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -16,26 +17,28 @@ class _LoginPageState extends State<LoginPage> {
 
   void _handleLogin() async {
     final provider = Provider.of<AuthProvider>(context, listen: false);
-
-    // Panggil login
     final success = await provider.login(
       _emailController.text.trim(),
       _passwordController.text.trim(),
     );
 
-    // Pastikan widget masih ada di tree sebelum menampilkan snackbar
     if (!mounted) return;
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Login Berhasil!'), backgroundColor: Colors.green),
+        const SnackBar(content: Text('Login Berhasil!'), backgroundColor: Colors.green),
       );
+
+      // SEMENTARA LANGSUNG KE DASHBOARD SISWA
+      Navigator.pushAndRemoveUntil(
+        context, 
+        MaterialPageRoute(builder: (_) => const StudentDashboardPage()),
+        (Route<dynamic> route) => false, 
+      );
+      
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(provider.errorMessage ?? 'Login Gagal'),
-            backgroundColor: Colors.red),
+        SnackBar(content: Text(provider.errorMessage ?? 'Login Gagal'), backgroundColor: Colors.red),
       );
     }
   }
@@ -80,38 +83,21 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 24),
-
-              // TOMBOL YANG SUDAH DIPERBAIKI
-              ElevatedButton(
-                onPressed: authProvider.isLoading
-                    ? null
-                    : _handleLogin, // Tombol mati kalau loading
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: authProvider.isLoading
-                      ? Colors.grey
-                      : Colors.blue, // Warna berubah
-                  foregroundColor: Colors.white,
-                ),
-                child: authProvider.isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Text(
-                        'MASUK',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
+              authProvider.isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ElevatedButton(
+                      onPressed: _handleLogin,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
                       ),
-              ),
-
+                      child: const Text('MASUK', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () {
-                  Navigator.pushReplacement(context,
-                      MaterialPageRoute(builder: (_) => const RegisterPage()));
+                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RegisterPage()));
                 },
                 child: const Text('Belum punya akun? Daftar di sini'),
               ),
