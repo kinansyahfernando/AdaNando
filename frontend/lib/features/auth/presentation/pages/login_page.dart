@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'register_page.dart';
 import '../../../student_dashboard/presentation/pages/student_dashboard_page.dart';
+import '../../../dashboard/admin/presentation/pages/admin_dashboard_page.dart'; 
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -29,12 +30,23 @@ class _LoginPageState extends State<LoginPage> {
         const SnackBar(content: Text('Login Berhasil!'), backgroundColor: Colors.green),
       );
 
-      // SEMENTARA LANGSUNG KE DASHBOARD SISWA
-      Navigator.pushAndRemoveUntil(
-        context, 
-        MaterialPageRoute(builder: (_) => const StudentDashboardPage()),
-        (Route<dynamic> route) => false, 
-      );
+      // --- LOGIKA ROUTING MENGGUNAKAN ROLE ASLI DARI BACKEND ---
+      final role = provider.userRole; 
+      
+      if (role == "admin") {
+        Navigator.pushAndRemoveUntil(
+          context, 
+          MaterialPageRoute(builder: (_) => const AdminDashboardPage()),
+          (Route<dynamic> route) => false, // Hapus riwayat halaman
+        );
+      } else {
+        Navigator.pushAndRemoveUntil(
+          context, 
+          MaterialPageRoute(builder: (_) => const StudentDashboardPage()),
+          (Route<dynamic> route) => false, // Hapus riwayat halaman
+        );
+      }
+      // ---------------------------------------------------------
       
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
