@@ -1,0 +1,11 @@
+# Node.js
+node_modules/
+dist/
+.env
+
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+ios/Pods/
+*.iml
