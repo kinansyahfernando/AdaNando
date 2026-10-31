@@ -6,7 +6,11 @@ import 'features/auth/presentation/pages/login_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(); 
+  try {
+    await dotenv.load();
+  } catch (_) {
+    // Fallback baseUrl di DioClient tetap dipakai.
+  }
 
   runApp(
     MultiProvider(
@@ -27,7 +31,7 @@ class MyApp extends StatelessWidget {
       title: 'AdaNando UTBK',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const LoginPage(), 
+      home: const LoginPage(),
     );
   }
 }

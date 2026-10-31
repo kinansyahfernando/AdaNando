@@ -6,7 +6,7 @@ const pool = mysql.createPool({
   port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',  // Laragon default: kosong
-  database: process.env.DB_NAME || 'adanando',
+  database: process.env.DB_NAME || 'db_utbk',
   waitForConnections: true,
   connectionLimit: 10,
   connectTimeout: 5000, // gagal cepat, jangan menggantung
