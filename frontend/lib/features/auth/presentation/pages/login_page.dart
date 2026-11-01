@@ -62,10 +62,13 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Icon(Icons.school, size: 80, color: Colors.blue),
@@ -114,6 +117,8 @@ class _LoginPageState extends State<LoginPage> {
                 child: const Text('Belum punya akun? Daftar di sini'),
               ),
             ],
+              ),
+            ),
           ),
         ),
       ),

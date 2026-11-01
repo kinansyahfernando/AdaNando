@@ -25,6 +25,8 @@ class _RegisterPageState extends State<RegisterPage> {
       _passwordController.text.trim(),
     );
 
+    if (!mounted) return;
+
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pendaftaran Berhasil! Silakan Login.'), backgroundColor: Colors.green),
@@ -44,10 +46,13 @@ class _RegisterPageState extends State<RegisterPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Daftar Akun')),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextField(
@@ -90,6 +95,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       child: const Text('DAFTAR', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
             ],
+              ),
+            ),
           ),
         ),
       ),

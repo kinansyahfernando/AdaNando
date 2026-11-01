@@ -6,7 +6,6 @@ import '../../../../core/utils/responsive.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/models/subtest.dart';
 import '../../data/subtest_catalog.dart';
-import '../widgets/soon_chip.dart';
 import '../widgets/subtest_card.dart';
 import 'practice_page.dart';
 
@@ -272,25 +271,17 @@ class _BelajarBarengBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          'Belajar Bareng',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        SoonChip(),
-                      ],
+                    const Text(
+                      'Belajar Bareng',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'Buat atau gabung room, kerjakan soal bersama teman, lalu lihat skor dan peringkat masing-masing.',
+                      'Buat atau gabung room, kerjakan soal bersama teman, lalu lihat skor dan peringkat. Bisa juga try out mandiri.',
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.muted,

@@ -3,6 +3,9 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes = require('./modules/auth/auth.routes'); // sesuaikan nama file
+const roomRoutes = require('./modules/rooms/rooms.routes'); // Belajar Bareng
+const tryoutRoutes = require('./modules/tryout/tryout.routes'); // Try Out Mandiri
+const resultRoutes = require('./modules/results/results.routes'); // Riwayat hasil (Potensi)
 
 const app = express();
 
@@ -41,6 +44,9 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/rooms', roomRoutes);
+app.use('/api/v1/tryout', tryoutRoutes);
+app.use('/api/v1/results', resultRoutes);
 
 // ---------- 404 ----------
 app.use((req, res) => {

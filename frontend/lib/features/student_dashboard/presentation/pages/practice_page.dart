@@ -5,6 +5,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/responsive.dart';
 import '../../data/models/question.dart';
 import '../../data/models/subtest.dart';
+import '../../data/results_repository.dart';
 import '../providers/practice_provider.dart';
 import '../widgets/option_tile.dart';
 import 'practice_result_page.dart';
@@ -81,9 +82,17 @@ class _PracticeViewState extends State<_PracticeView> {
         }
       });
     } else if (p.isLast) {
+      final result = p.buildResult();
+      // Simpan hasil untuk halaman Potensi (gagal simpan tidak mengganggu siswa)
+      ResultsRepository().savePractice(
+        subtestId: result.subtest.id,
+        total: result.total,
+        correct: result.correct,
+        wrong: result.wrong,
+      );
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => PracticeResultPage(result: p.buildResult()),
+          builder: (_) => PracticeResultPage(result: result),
         ),
       );
     } else {

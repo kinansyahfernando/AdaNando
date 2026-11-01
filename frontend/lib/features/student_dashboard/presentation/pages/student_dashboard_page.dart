@@ -1,158 +1,113 @@
 import 'package:flutter/material.dart';
-// Path import naik 3 folder
-import '../../../tryout/presentation/pages/tryout_page.dart';
-import '../../../leaderboard/presentation/pages/leaderboard_page.dart';
 
-class StudentDashboardPage extends StatelessWidget {
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/responsive.dart';
+import 'account_page.dart';
+import 'belajar_bareng_page.dart';
+import 'potensi_page.dart';
+import 'student_home_page.dart';
+
+/// Kerangka utama siswa: menu bawah di HP, menu samping di layar lebar.
+/// Tab: Beranda (pilih subtes) · Belajar Bareng · Potensi · Akun.
+class StudentDashboardPage extends StatefulWidget {
   const StudentDashboardPage({super.key});
 
   @override
+  State<StudentDashboardPage> createState() => _StudentDashboardPageState();
+}
+
+class _StudentDashboardPageState extends State<StudentDashboardPage> {
+  int _index = 0;
+
+  void _goTo(int index) => setState(() => _index = index);
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text('AdaNando Siswa'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Halo, Pejuang UTBK! 👋',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 5),
-              const Text(
-                'Siap untuk menaklukkan soal hari ini?',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-              const SizedBox(height: 30),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Colors.blue, Colors.lightBlue],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+    final width = MediaQuery.sizeOf(context).width;
+    final useRail = width >= Breakpoints.compact;
+
+    final pages = IndexedStack(
+      index: _index,
+      children: [
+        StudentHomePage(onOpenBelajarBareng: () => _goTo(1)),
+        const BelajarBarengPage(),
+        PotensiPage(active: _index == 2),
+        const AccountPage(),
+      ],
+    );
+
+    if (useRail) {
+      return Scaffold(
+        body: Row(
+          children: [
+            SafeArea(
+              child: NavigationRail(
+                selectedIndex: _index,
+                onDestinationSelected: _goTo,
+                extended: width >= Breakpoints.expanded,
+                labelType: width >= Breakpoints.expanded
+                    ? NavigationRailLabelType.none
+                    : NavigationRailLabelType.all,
+                backgroundColor: AppColors.surface,
+                destinations: const [
+                  NavigationRailDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home_rounded),
+                    label: Text('Beranda'),
                   ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.timer, color: Colors.white, size: 40),
-                    const SizedBox(height: 15),
-                    const Text(
-                      'Try Out Akbar',
-                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 5),
-                    const Text(
-                      'Uji kemampuanmu sekarang juga!',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context, 
-                          MaterialPageRoute(builder: (_) => const TryoutPage())
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.blue,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: const Text('Mulai Ujian', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
-              const Text(
-                'Menu Pembelajaran',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 15),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildMenuCard(
-                      context, 
-                      'Materi Belajar', 
-                      Icons.book, 
-                      Colors.green, 
-                      () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Materi segera hadir!'))); }
-                    ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.groups_outlined),
+                    selectedIcon: Icon(Icons.groups),
+                    label: Text('Belajar Bareng'),
                   ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: _buildMenuCard(
-                      context, 
-                      'Leaderboard', 
-                      Icons.leaderboard, 
-                      Colors.orange, 
-                      () { 
-                        Navigator.push(
-                          context, 
-                          MaterialPageRoute(builder: (_) => const LeaderboardPage())
-                        );
-                      }
-                    ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.insights_outlined),
+                    selectedIcon: Icon(Icons.insights),
+                    label: Text('Potensi'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.person_outline),
+                    selectedIcon: Icon(Icons.person),
+                    label: Text('Akun'),
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuCard(BuildContext context, String title, IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5, spreadRadius: 1),
-          ],
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 40, color: color),
-            const SizedBox(height: 10),
-            Text(
-              title, 
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
+            const VerticalDivider(width: 1, color: AppColors.border),
+            Expanded(child: pages),
           ],
         ),
+      );
+    }
+
+    return Scaffold(
+      body: pages,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: _goTo,
+        backgroundColor: AppColors.surface,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Beranda',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.groups_outlined),
+            selectedIcon: Icon(Icons.groups),
+            label: 'Bareng',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.insights_outlined),
+            selectedIcon: Icon(Icons.insights),
+            label: 'Potensi',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Akun',
+          ),
+        ],
       ),
     );
   }
