@@ -8,7 +8,19 @@ class SessionResult {
     required this.subtest,
     required this.questions,
     required this.answers,
+    this.fixedTotal,
+    this.fixedCorrect,
+    this.fixedWrong,
   });
+
+  /// Angka resmi dari server. Dipakai bila pembahasan belum dibuka
+  /// (soal belum dikirim ke aplikasi), jadi nilai tidak dihitung ulang di HP.
+  final int? fixedTotal;
+  final int? fixedCorrect;
+  final int? fixedWrong;
+
+  /// True bila soal + kunci tersedia untuk ditinjau.
+  bool get hasReview => questions.isNotEmpty;
 
   final Subtest subtest;
   final List<Question> questions;
@@ -16,9 +28,10 @@ class SessionResult {
   /// indeks soal -> indeks opsi yang dipilih
   final Map<int, int> answers;
 
-  int get total => questions.length;
+  int get total => fixedTotal ?? questions.length;
 
   int get correct {
+    if (fixedCorrect != null) return fixedCorrect!;
     var n = 0;
     for (var i = 0; i < questions.length; i++) {
       if (answers[i] == questions[i].correctIndex) n++;
@@ -27,6 +40,7 @@ class SessionResult {
   }
 
   int get wrong {
+    if (fixedWrong != null) return fixedWrong!;
     var n = 0;
     for (var i = 0; i < questions.length; i++) {
       final picked = answers[i];

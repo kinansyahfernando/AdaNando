@@ -2,13 +2,35 @@ import 'dart:async';
 import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../../core/security/exam_guard.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/responsive.dart';
 import '../../data/models/question.dart';
 import '../../data/models/subtest.dart';
 import '../widgets/option_tile.dart';
 import '../widgets/section_card.dart';
+
+/// Jawaban server atas laporan pelanggaran.
+class ViolationOutcome {
+  const ViolationOutcome({
+    required this.counted,
+    required this.count,
+    required this.max,
+    required this.ended,
+    this.route,
+  });
+
+  /// True bila pelanggaran ini menambah hitungan.
+  final bool counted;
+  final int count;
+  final int max;
+
+  /// True bila server mengakhiri ujian karena batas terlampaui.
+  final bool ended;
+  final Route<void>? route;
+}
 
 /// Halaman ujian berwaktu. Dipakai oleh Try Out Mandiri dan Belajar Bareng.
 ///
@@ -27,6 +49,10 @@ class TimedQuizPage extends StatefulWidget {
     this.strict = false,
     this.onViolation,
     this.leaveWarning,
+    this.initialAnswers = const {},
+    this.onAnswersChanged,
+    this.onViolationEvent,
+    this.watermark,
   });
 
   final String title;
@@ -55,6 +81,23 @@ class TimedQuizPage extends StatefulWidget {
   /// Teks peringatan saat siswa menekan tombol keluar.
   final String? leaveWarning;
 
+  /// Jawaban yang sudah tersimpan di server (melanjutkan setelah HP mati / refresh).
+  final Map<int, int> initialAnswers;
+
+  /// Dipanggil (dengan jeda singkat) setiap jawaban berubah, untuk autosave ke server.
+  final void Function(Map<int, int> answers)? onAnswersChanged;
+
+  /// Melaporkan pelanggaran ke server (pindah tab/aplikasi, keluar layar penuh, dll).
+  /// SERVER yang memutuskan apakah ujian diakhiri. Kembalikan null bila jaringan gagal.
+  final Future<ViolationOutcome?> Function(
+    String type,
+    Map<int, int> answers,
+  )?
+  onViolationEvent;
+
+  /// Teks tanda air di atas soal (nama + NIS) supaya foto layar bisa dilacak.
+  final String? watermark;
+
   @override
   State<TimedQuizPage> createState() => _TimedQuizPageState();
 }
@@ -68,11 +111,21 @@ class _TimedQuizPageState extends State<TimedQuizPage>
   bool _submitting = false;
   bool _autoSubmitted = false;
   bool _ended = false;
+  Timer? _saveTimer;
+  bool _warningOpen = false;
+  bool _pendingBackground = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _answers.addAll(widget.initialAnswers);
+    if (widget.strict) {
+      WakelockPlus.enable().catchError((_) {}); // layar tidak mati saat ujian
+      if (widget.onViolationEvent != null) {
+        ExamGuard.start((type) => _reportViolation(type));
+      }
+    }
     _remaining = widget.remainingSeconds();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     if (_remaining <= 0 && widget.questions.isNotEmpty) {
@@ -84,18 +137,89 @@ class _TimedQuizPageState extends State<TimedQuizPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
+    _saveTimer?.cancel();
+    if (widget.strict) {
+      ExamGuard.stop();
+      WakelockPlus.disable().catchError((_) {});
+    }
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!widget.strict) return;
-    // Pindah aplikasi / pindah tab / layar dikunci = meninggalkan ujian.
+    // Pindah aplikasi / layar dikunci = meninggalkan ujian.
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
-      _endEarly('violation');
+      if (widget.onViolationEvent != null) {
+        _reportViolation('app_background');
+      } else {
+        _endEarly('violation');
+      }
+    } else if (state == AppLifecycleState.resumed && _pendingBackground) {
+      // Laporan saat di latar belakang gagal terkirim: kirim ulang sekarang.
+      _pendingBackground = false;
+      _reportViolation('app_background');
     }
+  }
+
+  /// Melapor ke server. Server mendebounce kejadian kembar dan memutuskan
+  /// kapan ujian diakhiri; aplikasi hanya menampilkan peringatannya.
+  Future<void> _reportViolation(String type) async {
+    final handler = widget.onViolationEvent;
+    if (handler == null || _ended || _submitting || !mounted) return;
+
+    _saveTimer?.cancel();
+    final outcome = await handler(type, Map<int, int>.of(_answers));
+    if (!mounted || _ended) return;
+
+    if (outcome == null) {
+      if (type == 'app_background') _pendingBackground = true;
+      return;
+    }
+    if (outcome.ended) {
+      _ended = true;
+      _ticker?.cancel();
+      final route = outcome.route;
+      if (route != null) {
+        _replaceWith(route);
+      } else {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+    if (outcome.counted) _showViolationWarning(outcome.count, outcome.max);
+  }
+
+  Future<void> _showViolationWarning(int count, int max) async {
+    if (_warningOpen || !mounted) return;
+    _warningOpen = true;
+    final left = max - count;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          color: AppColors.danger,
+          size: 40,
+        ),
+        title: Text('Peringatan $count dari $max'),
+        content: Text(
+          'Kamu meninggalkan layar ujian. Tetaplah di halaman ini. '
+          '${left > 0 ? 'Sisa kesempatan: $left. Bila habis, ujian otomatis dikumpulkan dan diakhiri.' : ''}'
+          '\n\nPelanggaran dicatat dan bisa dilihat guru / pengawas.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Saya mengerti'),
+          ),
+        ],
+      ),
+    );
+    _warningOpen = false;
   }
 
   /// Pindah ke halaman berikutnya. Dialog / sheet yang masih terbuka
@@ -256,6 +380,17 @@ class _TimedQuizPageState extends State<TimedQuizPage>
         _answers[_index] = optionIndex;
       }
     });
+    _scheduleSave();
+  }
+
+  void _scheduleSave() {
+    final cb = widget.onAnswersChanged;
+    if (cb == null) return;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(
+      const Duration(milliseconds: 700),
+      () => cb(Map<int, int>.of(_answers)),
+    );
   }
 
   void _goTo(int index) {
@@ -522,6 +657,8 @@ class _TimedQuizPageState extends State<TimedQuizPage>
                     ],
                   )
                 : questionArea,
+            if (widget.watermark != null)
+              Positioned.fill(child: _Watermark(text: widget.watermark!)),
             if (_submitting)
               Positioned.fill(
                 child: Container(
@@ -879,6 +1016,61 @@ class _BottomBar extends StatelessWidget {
                     ),
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Tanda air ─────────────────────────
+
+/// Tulisan nama + NIS yang diulang miring di atas soal. Tidak menghalangi sentuhan.
+class _Watermark extends StatelessWidget {
+  const _Watermark({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w700,
+      color: Colors.black.withAlpha(20),
+    );
+    return IgnorePointer(
+      child: ClipRect(
+        child: OverflowBox(
+          maxWidth: double.infinity,
+          maxHeight: double.infinity,
+          child: Transform.rotate(
+            angle: -0.45,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var r = 0; r < 16; r++)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var c = 0; c < 9; c++)
+                          Padding(
+                            padding: EdgeInsets.only(
+                              left: c == 0 ? (r.isEven ? 0 : 70) : 36,
+                            ),
+                            child: Text(
+                              text,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: style,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),

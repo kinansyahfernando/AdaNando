@@ -8,23 +8,21 @@ import 'room_repository.dart' show ApiException;
 class ResultsRepository {
   final Dio _dio = DioClient.instance;
 
-  /// Simpan hasil latihan satu subtes. Gagal menyimpan tidak boleh
-  /// mengganggu siswa, jadi semua error diabaikan.
-  Future<void> savePractice({
-    required String subtestId,
-    required int total,
-    required int correct,
-    required int wrong,
-  }) async {
-    if (total < 1) return;
+  /// Kirim jawaban satu sesi latihan; NILAI dihitung server, bukan dari aplikasi.
+  /// Gagal menyimpan tidak boleh mengganggu siswa, jadi semua error diabaikan.
+  Future<void> savePractice(List<({String questionId, int chosenIndex})> answers) async {
+    if (answers.isEmpty) return;
     try {
       await _dio.post(
-        '/results',
+        '/practice/finish',
         data: {
-          'subtestId': subtestId,
-          'total': total,
-          'correct': correct,
-          'wrong': wrong,
+          'answers': [
+            for (final a in answers)
+              {
+                'questionId': int.tryParse(a.questionId) ?? 0,
+                'chosenIndex': a.chosenIndex,
+              },
+          ],
         },
       );
     } catch (_) {

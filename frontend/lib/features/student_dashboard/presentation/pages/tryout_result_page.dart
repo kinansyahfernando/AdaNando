@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/security/exam_guard.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/responsive.dart';
 import '../../../../core/utils/secure_screen.dart';
@@ -25,10 +26,33 @@ class TryoutResultPage extends StatefulWidget {
 }
 
 class _TryoutResultPageState extends State<TryoutResultPage> {
+  bool _loading = true;
+  String? _error;
+
   @override
   void initState() {
     super.initState();
     SecureScreen.disable(); // ujian selesai, screenshot boleh lagi
+    ExamGuard.exitFullscreen();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await widget.session.loadResults();
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   void _finish() {
@@ -38,6 +62,18 @@ class _TryoutResultPageState extends State<TryoutResultPage> {
   void _openReview(int index) {
     final result = widget.session.results[index];
     if (result == null) return;
+    if (!result.hasReview) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Pembahasan dibuka setelah waktu ujian ditutup oleh guru.',
+            ),
+          ),
+        );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => _ReviewPage(result: result)),
     );
@@ -48,7 +84,7 @@ class _TryoutResultPageState extends State<TryoutResultPage> {
       case 'violation':
         return (
           text:
-              'Try out dihentikan otomatis karena kamu meninggalkan aplikasi atau pindah tab. Jawaban subtes yang sedang berjalan tetap dinilai.',
+              'Ujian dihentikan otomatis karena pelanggaran melewati batas (meninggalkan aplikasi / pindah tab / keluar layar penuh). Jawaban yang sudah tersimpan tetap dinilai.',
           color: AppColors.danger,
           icon: Icons.warning_amber_rounded,
         );
@@ -58,6 +94,12 @@ class _TryoutResultPageState extends State<TryoutResultPage> {
               'Kamu mengakhiri try out lebih awal. Subtes yang belum dikerjakan dinilai kosong.',
           color: AppColors.penalaran,
           icon: Icons.exit_to_app,
+        );
+      case 'admin':
+        return (
+          text: 'Ujianmu dikumpulkan oleh pengawas / guru.',
+          color: AppColors.muted,
+          icon: Icons.how_to_reg_outlined,
         );
       case 'timeout':
         return (
@@ -76,28 +118,70 @@ class _TryoutResultPageState extends State<TryoutResultPage> {
     final hPad = horizontalPagePadding(context);
     final wide = MediaQuery.sizeOf(context).width >= Breakpoints.medium;
 
-    var correct = 0;
-    var wrong = 0;
-    var points = 0;
-    for (final r in session.results.values) {
-      correct += r.correct;
-      wrong += r.wrong;
-      points += r.points;
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final totalQuestions = session.state.totalQuestions;
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Hasil')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off, size: 56, color: AppColors.muted),
+                const SizedBox(height: 12),
+                Text(_error!, textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: _load, child: const Text('Coba Lagi')),
+                TextButton(onPressed: _finish, child: const Text('Kembali')),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Nilai resmi dari server. Null bila guru memilih tidak menampilkannya dulu.
+    final score = session.state.result;
+    final correct = score?.correct ?? 0;
+    final wrong = score?.wrong ?? 0;
+    final points = score?.points ?? 0;
+    final totalQuestions = score?.total ?? session.state.totalQuestions;
     final blank = totalQuestions - correct - wrong;
     final accuracy = totalQuestions == 0 ? 0.0 : correct / totalQuestions;
 
     final banner = _banner();
 
-    final summary = _TotalCard(
-      points: points,
-      correct: correct,
-      wrong: wrong,
-      blank: blank,
-      accuracy: accuracy,
-      totalQuestions: totalQuestions,
-    );
+    final Widget summary = score == null
+        ? const SectionCard(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Icon(Icons.hourglass_top_rounded, size: 40, color: AppColors.muted),
+                SizedBox(height: 10),
+                Text(
+                  'Jawabanmu sudah terkumpul.',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Nilai akan ditampilkan sesuai pengaturan dari guru.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ],
+            ),
+          )
+        : _TotalCard(
+            points: points,
+            correct: correct,
+            wrong: wrong,
+            blank: blank,
+            accuracy: accuracy,
+            totalQuestions: totalQuestions,
+          );
 
     final sectionList = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -477,7 +561,14 @@ class _SectionResultTile extends StatelessWidget {
                 ),
               ],
             ),
-          if (r != null) ...[
+          if (r != null && !r.hasReview) ...[
+            const SizedBox(height: 6),
+            const Text(
+              'Pembahasan dibuka setelah ujian ditutup.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+            ),
+          ],
+          if (r != null && r.hasReview) ...[
             const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerLeft,

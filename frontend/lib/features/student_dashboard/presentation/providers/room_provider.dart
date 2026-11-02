@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../data/models/question.dart';
 import '../../data/models/room.dart';
 import '../../data/room_repository.dart';
 
@@ -45,13 +46,13 @@ class RoomProvider extends ChangeNotifier {
 
   Future<bool> createRoom({
     required String subtestId,
-    required List<String> questionIds,
+    required int count,
     required int durationSeconds,
   }) async {
     final ok = await _run(
       () => _repo.create(
         subtestId: subtestId,
-        questionIds: questionIds,
+        count: count,
         durationSeconds: durationSeconds,
       ),
     );
@@ -73,19 +74,24 @@ class RoomProvider extends ChangeNotifier {
 
   Future<bool> submitAnswers({
     required Map<String, int> answers,
-    required int correct,
-    required int wrong,
   }) async {
     final current = room;
     if (current == null) return false;
-    return _run(
-      () => _repo.submit(
-        current.code,
-        answers: answers,
-        correct: correct,
-        wrong: wrong,
-      ),
-    );
+    return _run(() => _repo.submit(current.code, answers: answers));
+  }
+
+  /// Soal room tanpa kunci. Melempar error bila belum bisa diambil.
+  Future<List<Question>> loadQuestions() {
+    final current = room;
+    if (current == null) return Future.value(const []);
+    return _repo.questions(current.code);
+  }
+
+  /// Soal + kunci + pembahasan (hanya setelah room selesai).
+  Future<List<Question>> loadReview() {
+    final current = room;
+    if (current == null) return Future.value(const []);
+    return _repo.review(current.code);
   }
 
   /// Keluar dari room lalu bersihkan state.

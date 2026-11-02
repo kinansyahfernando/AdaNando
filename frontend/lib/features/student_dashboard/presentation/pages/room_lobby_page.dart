@@ -313,7 +313,7 @@ class _InfoCard extends StatelessWidget {
             children: [
               _InfoChip(
                 icon: Icons.quiz_outlined,
-                label: '${room.questionIds.length} soal',
+                label: '${room.questionCount} soal',
               ),
               _InfoChip(icon: Icons.timer_outlined, label: '$minutes menit'),
             ],

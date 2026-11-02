@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/network/dio_client.dart';
+import 'models/question.dart';
 import 'models/room.dart';
 
 /// Error dari backend (status 4xx) beserta pesan yang bisa langsung ditampilkan.
@@ -20,14 +21,15 @@ class RoomRepository {
 
   Future<RoomState> create({
     required String subtestId,
-    required List<String> questionIds,
+    required int count,
     required int durationSeconds,
   }) async {
+    // Soal dipilih server dari bank soal; aplikasi hanya meminta jumlahnya.
     final response = await _dio.post(
       '/rooms',
       data: {
         'subtestId': subtestId,
-        'questionIds': questionIds,
+        'count': count,
         'durationSeconds': durationSeconds,
       },
     );
@@ -52,14 +54,31 @@ class RoomRepository {
   Future<RoomState> submit(
     String code, {
     required Map<String, int> answers,
-    required int correct,
-    required int wrong,
   }) async {
+    // Nilai dihitung server dari jawaban mentah ini.
     final response = await _dio.post(
       '/rooms/$code/submit',
-      data: {'answers': answers, 'correct': correct, 'wrong': wrong},
+      data: {'answers': answers},
     );
     return RoomState.fromJson(_handle(response));
+  }
+
+  /// Soal room (tanpa kunci), tersedia setelah room dimulai.
+  Future<List<Question>> questions(String code) async {
+    final data = _handle(await _dio.get('/rooms/$code/questions'));
+    return ((data['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((m) => Question.fromJson(m.cast<String, dynamic>()))
+        .toList();
+  }
+
+  /// Soal + kunci + pembahasan, hanya setelah room selesai.
+  Future<List<Question>> review(String code) async {
+    final data = _handle(await _dio.get('/rooms/$code/review'));
+    return ((data['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((m) => Question.fromJson(m.cast<String, dynamic>()))
+        .toList();
   }
 
   Future<void> leave(String code) async {

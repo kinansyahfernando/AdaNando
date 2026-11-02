@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../core/theme/app_theme.dart';
 import '../../data/bank_lookup.dart';
 import '../../data/models/question.dart';
 import '../../data/models/session_result.dart';
@@ -8,8 +9,8 @@ import '../providers/room_provider.dart';
 import 'session_result_page.dart';
 import 'timed_quiz_page.dart';
 
-/// Ujian Belajar Bareng. Waktu dihitung dari jam server sehingga
-/// semua peserta selesai bersamaan.
+/// Ujian Belajar Bareng. Soal diambil dari server (tanpa kunci), waktu dihitung
+/// dari jam server sehingga semua peserta selesai bersamaan, dan nilai dihitung server.
 class RoomQuizPage extends StatefulWidget {
   const RoomQuizPage({super.key});
 
@@ -23,9 +24,10 @@ class RoomQuizPage extends StatefulWidget {
 
 class _RoomQuizPageState extends State<RoomQuizPage> {
   late final RoomProvider _provider;
-  late final List<Question> _questions;
   late final String _code;
   late final String _subtestId;
+  List<Question>? _questions;
+  String? _error;
 
   @override
   void initState() {
@@ -33,33 +35,76 @@ class _RoomQuizPageState extends State<RoomQuizPage> {
     _provider = context.read<RoomProvider>();
     final room = _provider.room;
     _code = room?.code ?? '';
-    _subtestId = room?.subtestId ?? mixSubtestId;
-    _questions = BankLookup.resolve(room?.questionIds ?? const []);
+    _subtestId = room?.subtestId ?? utbkSubtestId;
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _error = null);
+    try {
+      final list = await _provider.loadQuestions();
+      if (!mounted) return;
+      setState(() => _questions = list);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final subtest = BankLookup.subtestById(_subtestId);
+    final questions = _questions;
+
+    if (questions == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Belajar Bareng')),
+        body: Center(
+          child: _error == null
+              ? const CircularProgressIndicator()
+              : Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cloud_off, size: 56, color: AppColors.muted),
+                      const SizedBox(height: 12),
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      FilledButton(onPressed: _load, child: const Text('Coba Lagi')),
+                    ],
+                  ),
+                ),
+        ),
+      );
+    }
 
     return TimedQuizPage(
       title: 'Belajar Bareng · ${subtest.code}',
       subtest: subtest,
-      questions: _questions,
+      questions: questions,
       remainingSeconds: () => _provider.remainingSeconds,
       onLeave: _provider.reset,
       onFinish: (answers) async {
-        final result = SessionResult(
+        final draft = SessionResult(
           subtest: subtest,
-          questions: _questions,
+          questions: questions,
           answers: answers,
         );
 
-        final ok = await _provider.submitAnswers(
-          answers: result.answersById,
-          correct: result.correct,
-          wrong: result.wrong,
-        );
+        // Server menilai dari jawaban mentah; angka dari aplikasi tidak dipakai.
+        final ok = await _provider.submitAnswers(answers: draft.answersById);
         if (!ok) return null;
+
+        final me = _provider.room?.me;
+        final result = SessionResult(
+          subtest: subtest,
+          questions: questions,
+          answers: answers,
+          fixedTotal: questions.length,
+          fixedCorrect: me?.correct,
+          fixedWrong: me?.wrong,
+        );
 
         return MaterialPageRoute<void>(
           builder: (_) => SessionResultPage(result: result, roomCode: _code),

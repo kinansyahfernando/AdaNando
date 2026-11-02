@@ -1,12 +1,12 @@
-// src/modules/results/results.routes.js
+// src/modules/results/results.routes.js  ->  /api/v1/results
 const express = require('express');
-const authMiddleware = require('../../middlewares/authMiddleware');
-const controller = require('./results.controller');
+const { wrap } = require('../../utils/http');
+const { authenticate, requirePasswordChanged } = require('../../middlewares/auth');
+const service = require('./results.service');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authenticate, requirePasswordChanged);
 
-router.post('/', controller.savePractice); // simpan hasil latihan subtes
-router.get('/history', controller.history); // riwayat untuk halaman Potensi
+router.get('/history', wrap(async (req, res) => res.json(await service.history(req.user))));
 
 module.exports = router;

@@ -1,18 +1,32 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
-import 'models/question.dart';
 import 'models/subtest.dart';
-import 'sample_question_bank.dart';
 import 'subtest_catalog.dart';
 
-const String mixSubtestId = 'mix';
+/// ID pilihan "UTBK" di Buat Room: soal + waktu dikunci sama seperti UTBK
+/// (7 subtes berurutan, 160 soal, 195 menit). Harus sama dengan di backend.
+const String utbkSubtestId = 'utbk';
 
-/// Pilihan "Campuran": soal acak dari semua subtes.
-const Subtest mixSubtest = Subtest(
-  id: mixSubtestId,
+/// Jumlah soal & waktu UTBK (sesuai backend/src/modules/tryout/tryout.config.js).
+const int utbkTotalQuestions = 160;
+const int utbkTotalSeconds = 195 * 60;
+
+/// Pilihan "UTBK": semua subtes dalam satu sesi, soal dan waktu mengikuti UTBK.
+const Subtest utbkSubtest = Subtest(
+  id: utbkSubtestId,
+  code: 'UTBK',
+  name: 'UTBK Lengkap',
+  description:
+      '7 subtes berurutan, 160 soal, 195 menit. Soal dan waktu sama seperti UTBK.',
+  icon: Icons.school_rounded,
+  color: AppColors.bareng,
+);
+
+/// Hanya untuk menampilkan room lama yang dibuat dengan pilihan "Campuran"
+/// (tidak lagi tersedia di pilihan Buat Room).
+const Subtest _legacyMixSubtest = Subtest(
+  id: 'mix',
   code: 'MIX',
   name: 'Campuran Semua Subtes',
   description: 'Soal acak dari seluruh subtes UTBK.',
@@ -20,8 +34,8 @@ const Subtest mixSubtest = Subtest(
   color: AppColors.bareng,
 );
 
-/// Pencarian subtes & soal dari bank soal lokal.
-/// Saat soal sudah pindah ke database, cukup ganti isi file ini.
+/// Katalog tampilan subtes. Soal TIDAK disimpan di aplikasi: semua soal dan kunci
+/// jawaban berada di server (lihat repository latihan / ujian / room).
 class BankLookup {
   BankLookup._();
 
@@ -29,53 +43,40 @@ class BankLookup {
     for (final c in SubtestCatalog.categories) ...c.subtests,
   ];
 
-  /// Urutan pilihan di layar: Campuran dulu, lalu semua subtes.
-  static List<Subtest> get choices => [mixSubtest, ...allSubtests];
+  /// Urutan pilihan di layar: UTBK dulu, lalu semua subtes.
+  static List<Subtest> get choices => [utbkSubtest, ...allSubtests];
 
   static Subtest subtestById(String id) {
-    if (id == mixSubtestId) return mixSubtest;
+    if (id == utbkSubtestId) return utbkSubtest;
+    if (id == 'mix') return _legacyMixSubtest;
     for (final s in allSubtests) {
       if (s.id == id) return s;
     }
-    return mixSubtest;
+    return utbkSubtest;
   }
 
-  static List<Question> _poolOf(String subtestId) {
-    if (subtestId == mixSubtestId) {
-      return [for (final list in sampleQuestionBank.values) ...list];
+  /// Subtes untuk tampilan ujian. Mapel buatan sekolah (bukan UTBK) tidak ada di
+  /// katalog, jadi dibuatkan tampilan umum dari nama yang dikirim server.
+  static Subtest forSection(String id, String name) {
+    for (final s in allSubtests) {
+      if (s.id == id) return s;
     }
-    return List<Question>.of(sampleQuestionBank[subtestId] ?? const []);
-  }
-
-  /// Jumlah soal yang tersedia untuk subtes tertentu.
-  static int availableCount(String subtestId) => _poolOf(subtestId).length;
-
-  /// Ambil [count] soal acak dari subtes.
-  static List<Question> pick(String subtestId, int count) {
-    final pool = _poolOf(subtestId)..shuffle(Random());
-    return pool.take(count).toList();
-  }
-
-  /// Ambil tepat [count] soal. Bila bank soal kurang, soal diulang (diacak
-  /// ulang tiap putaran). Dipakai Try Out Mandiri selama bank soal masih sedikit.
-  static List<Question> pickCycled(String subtestId, int count) {
-    final base = _poolOf(subtestId);
-    if (base.isEmpty) return const [];
-
-    final random = Random();
-    final result = <Question>[];
-    while (result.length < count) {
-      result.addAll(List<Question>.of(base)..shuffle(random));
-    }
-    return result.take(count).toList();
-  }
-
-  /// Ubah daftar id soal (dari server) menjadi soal lengkap, urutan dipertahankan.
-  static List<Question> resolve(List<String> ids) {
-    final byId = <String, Question>{
-      for (final list in sampleQuestionBank.values)
-        for (final q in list) q.id: q,
-    };
-    return ids.map((id) => byId[id]).whereType<Question>().toList();
+    final code = name.trim().isEmpty
+        ? id.toUpperCase()
+        : name
+              .trim()
+              .split(RegExp(r'\s+'))
+              .map((w) => w.isEmpty ? '' : w[0])
+              .take(4)
+              .join()
+              .toUpperCase();
+    return Subtest(
+      id: id,
+      code: code,
+      name: name,
+      description: name,
+      icon: Icons.school_outlined,
+      color: AppColors.primary,
+    );
   }
 }

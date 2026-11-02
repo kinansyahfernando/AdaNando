@@ -1,0 +1,62 @@
+# Menjalankan seluruh sistem sekolah dengan satu perintah:
+#   1) cp .env.docker.example .env   (lalu isi)
+#   2) cd frontend && flutter build web --release --no-web-resources-cdn && cd ..
+#   3) docker compose up -d --build
+services:
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: db_utbk
+      MARIADB_USER: adanando
+      MARIADB_PASSWORD: ${DB_PASSWORD:?isi DB_PASSWORD di .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?isi DB_ROOT_PASSWORD di .env}
+    volumes:
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: db
+      DB_USER: adanando
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: db_utbk
+      JWT_SECRET: ${JWT_SECRET:?isi JWT_SECRET di .env (min. 32 karakter)}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@sekolahmu.sch.id}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ALLOW_REGISTER: ${ALLOW_REGISTER:-false}
+      SINGLE_SESSION: ${SINGLE_SESSION:-true}
+      TRUST_PROXY: "1"
+      WEB_DIR: /web
+    volumes:
+      - ./frontend/build/web:/web:ro
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?isi DOMAIN di .env, mis. ujian.sekolahmu.sch.id}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  dbdata:
+  caddydata:
+  caddyconfig:

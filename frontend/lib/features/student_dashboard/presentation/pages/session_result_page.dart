@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/responsive.dart';
+import '../../data/models/question.dart';
 import '../../data/models/room.dart';
 import '../../data/models/session_result.dart';
 import '../providers/room_provider.dart';
@@ -23,6 +24,50 @@ class SessionResultPage extends StatefulWidget {
 
 class _SessionResultPageState extends State<SessionResultPage> {
   bool get _isRoom => widget.roomCode != null;
+
+  // Setelah room selesai, soal + kunci + pembahasan diambil dari server.
+  SessionResult? _reviewed;
+  bool _loadingReview = false;
+
+  void _maybeLoadReview(RoomProvider provider) {
+    if (_reviewed != null || _loadingReview) return;
+    if (provider.room?.isFinished != true) return;
+    _loadingReview = true;
+    provider.loadReview().then((List<Question> list) {
+      if (!mounted || list.isEmpty) {
+        _loadingReview = false;
+        return;
+      }
+      final old = widget.result;
+      final answers = <int, int>{};
+      for (var i = 0; i < list.length; i++) {
+        // Jawaban pilihan siswa sudah ada di respons review melalui chosen.
+        final q = list[i];
+        final chosen = old.answers[_indexOf(old, q.id)];
+        if (chosen != null) answers[i] = chosen;
+      }
+      setState(() {
+        _reviewed = SessionResult(
+          subtest: old.subtest,
+          questions: list,
+          answers: answers,
+          fixedTotal: old.total,
+          fixedCorrect: old.fixedCorrect,
+          fixedWrong: old.fixedWrong,
+        );
+        _loadingReview = false;
+      });
+    }).catchError((_) {
+      _loadingReview = false;
+    });
+  }
+
+  int _indexOf(SessionResult r, String questionId) {
+    for (var i = 0; i < r.questions.length; i++) {
+      if (r.questions[i].id == questionId) return i;
+    }
+    return -1;
+  }
 
   @override
   void initState() {
@@ -50,7 +95,8 @@ class _SessionResultPageState extends State<SessionResultPage> {
   Widget build(BuildContext context) {
     final hPad = horizontalPagePadding(context);
     final wide = MediaQuery.sizeOf(context).width >= Breakpoints.medium;
-    final result = widget.result;
+    if (_isRoom) _maybeLoadReview(context.watch<RoomProvider>());
+    final result = _reviewed ?? widget.result;
 
     final summary = _SummaryCard(result: result, message: _message);
     final doneButton = FilledButton.icon(

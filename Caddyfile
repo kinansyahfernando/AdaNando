@@ -1,0 +1,6 @@
+# HTTPS otomatis (Let's Encrypt) untuk domain sekolah.
+# HTTPS WAJIB agar aplikasi bisa dipasang di iPhone & berfungsi penuh.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy app:3000
+}

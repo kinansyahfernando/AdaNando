@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/responsive.dart';
-import '../../../auth/presentation/pages/login_page.dart';
+import '../../../auth/presentation/pages/change_password_page.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Halaman akun siswa: info singkat dan tombol keluar.
@@ -31,11 +31,7 @@ class AccountPage extends StatelessWidget {
 
     if (confirmed != true || !context.mounted) return;
 
-    context.read<AuthProvider>().logout();
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const LoginPage()),
-      (route) => false,
-    );
+    await context.read<AuthProvider>().logout();
   }
 
   @override
@@ -46,7 +42,15 @@ class AccountPage extends StatelessWidget {
     final name = (auth.userName ?? '').trim().isEmpty
         ? 'Siswa'
         : auth.userName!;
-    final roleLabel = auth.userRole == 'admin' ? 'Admin' : 'Siswa';
+    final roleLabel = auth.userRole == 'admin'
+        ? 'Admin'
+        : auth.userRole == 'guru'
+        ? 'Guru'
+        : [
+            'Siswa',
+            if ((auth.className ?? '').isNotEmpty) auth.className!,
+            if ((auth.userNis ?? '').isNotEmpty) 'NIS ${auth.userNis}',
+          ].join(' · ');
     final initial = name.substring(0, 1).toUpperCase();
 
     return SafeArea(
@@ -119,6 +123,19 @@ class AccountPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    Navigator.of(context).push(ChangePasswordPage.route()),
+                icon: const Icon(Icons.key_outlined),
+                label: const Text('Ganti Password'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () => _confirmLogout(context),
                 icon: const Icon(Icons.logout),

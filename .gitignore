@@ -1,6 +1,9 @@
 # Node.js
 node_modules/
 .env
+.env.*
+!.env.example
+!.env.docker.example
 
 # Flutter/Dart
 .dart_tool/

@@ -51,7 +51,7 @@ class RoomState {
   const RoomState({
     required this.code,
     required this.subtestId,
-    required this.questionIds,
+    required this.questionCount,
     required this.durationSeconds,
     required this.status,
     required this.startedAt,
@@ -62,7 +62,7 @@ class RoomState {
 
   final String code;
   final String subtestId;
-  final List<String> questionIds;
+  final int questionCount;
   final int durationSeconds;
 
   /// 'waiting' | 'running' | 'finished' | 'closed'
@@ -99,9 +99,7 @@ class RoomState {
     return RoomState(
       code: (room['code'] ?? '').toString(),
       subtestId: (room['subtestId'] ?? '').toString(),
-      questionIds: ((room['questionIds'] as List?) ?? const [])
-          .map((e) => e.toString())
-          .toList(),
+      questionCount: _asInt(room['questionCount']) ?? 0,
       durationSeconds: _asInt(room['durationSeconds']) ?? 0,
       status: (room['status'] ?? 'waiting').toString(),
       startedAt: _asInt(room['startedAt']),
@@ -119,7 +117,7 @@ class RoomState {
     return RoomState(
       code: code,
       subtestId: subtestId,
-      questionIds: questionIds,
+      questionCount: questionCount,
       durationSeconds: durationSeconds,
       status: newStatus,
       startedAt: startedAt,

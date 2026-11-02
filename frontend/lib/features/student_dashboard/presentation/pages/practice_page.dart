@@ -66,9 +66,20 @@ class _PracticeViewState extends State<_PracticeView> {
     }
   }
 
-  void _onPrimaryPressed(PracticeProvider p) {
+  Future<void> _onPrimaryPressed(PracticeProvider p) async {
     if (!p.isChecked) {
-      p.check();
+      final ok = await p.check();
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Gagal memeriksa jawaban. Periksa koneksi lalu coba lagi.'),
+            ),
+          );
+        return;
+      }
       // Setelah kunci & pembahasan muncul, gulir agar terlihat.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final feedbackContext = _feedbackKey.currentContext;
@@ -84,12 +95,10 @@ class _PracticeViewState extends State<_PracticeView> {
     } else if (p.isLast) {
       final result = p.buildResult();
       // Simpan hasil untuk halaman Potensi (gagal simpan tidak mengganggu siswa)
-      ResultsRepository().savePractice(
-        subtestId: result.subtest.id,
-        total: result.total,
-        correct: result.correct,
-        wrong: result.wrong,
-      );
+      ResultsRepository().savePractice([
+        for (final r in result.reviews)
+          (questionId: r.question.id, chosenIndex: r.selectedIndex),
+      ]);
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => PracticeResultPage(result: result),
@@ -149,7 +158,9 @@ class _PracticeViewState extends State<_PracticeView> {
     }
     if (p.errorMessage != null) {
       return _MessageState(
-        icon: Icons.wifi_off_rounded,
+        icon: p.errorIsConnection
+            ? Icons.wifi_off_rounded
+            : Icons.error_outline_rounded,
         title: p.errorMessage!,
         actionLabel: 'Coba Lagi',
         onAction: p.load,

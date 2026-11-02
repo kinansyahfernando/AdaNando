@@ -33,23 +33,29 @@ class PracticeResult {
 /// State satu sesi latihan. Dibuat baru setiap siswa membuka sebuah subtes.
 class PracticeProvider extends ChangeNotifier {
   PracticeProvider({required this.subtest, PracticeRepository? repository})
-    : _repository = repository ?? SamplePracticeRepository();
+    : _repository = repository ?? ApiPracticeRepository();
 
   final Subtest subtest;
   final PracticeRepository _repository;
 
   bool isLoading = true;
   String? errorMessage;
+
+  /// True bila gagal karena server tidak terjangkau (bukan error dari server itu sendiri).
+  bool errorIsConnection = false;
   List<Question> questions = const [];
   int currentIndex = 0;
 
   final Map<int, int> _selected = {}; // indeks soal -> indeks opsi
   final Set<int> _checked = {}; // soal yang sudah diperiksa
+  final Map<int, Question> _revealed = {}; // soal + kunci dari server
+  bool isChecking = false;
   bool _disposed = false;
 
   Future<void> load() async {
     isLoading = true;
     errorMessage = null;
+    errorIsConnection = false;
     _notify();
 
     try {
@@ -57,8 +63,10 @@ class PracticeProvider extends ChangeNotifier {
       currentIndex = 0;
       _selected.clear();
       _checked.clear();
-    } catch (_) {
-      errorMessage = 'Gagal memuat soal. Coba lagi.';
+      _revealed.clear();
+    } catch (e) {
+      errorMessage = friendlyError(e);
+      errorIsConnection = isConnectionError(e);
     }
 
     isLoading = false;
@@ -66,7 +74,8 @@ class PracticeProvider extends ChangeNotifier {
   }
 
   bool get hasQuestions => questions.isNotEmpty;
-  Question get current => questions[currentIndex];
+  /// Soal saat ini. Setelah diperiksa, berisi kunci + pembahasan dari server.
+  Question get current => _revealed[currentIndex] ?? questions[currentIndex];
   int? get selectedIndex => _selected[currentIndex];
   bool get isChecked => _checked.contains(currentIndex);
   bool get isLast => currentIndex >= questions.length - 1;
@@ -83,10 +92,28 @@ class PracticeProvider extends ChangeNotifier {
     _notify();
   }
 
-  void check() {
-    if (!hasQuestions || isChecked || selectedIndex == null) return;
-    _checked.add(currentIndex);
+  /// Minta server memeriksa jawaban. False bila gagal (mis. jaringan putus).
+  Future<bool> check() async {
+    if (!hasQuestions || isChecked || selectedIndex == null || isChecking) {
+      return true;
+    }
+    final index = currentIndex;
+    isChecking = true;
     _notify();
+    try {
+      final r = await _repository.check(questions[index].id, _selected[index]!);
+      _revealed[index] = questions[index].withKey(
+        correctIndex: r.correctIndex,
+        explanation: r.explanation,
+      );
+      _checked.add(index);
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      isChecking = false;
+      _notify();
+    }
   }
 
   void next() {
@@ -101,7 +128,10 @@ class PracticeProvider extends ChangeNotifier {
       final selected = _selected[i];
       if (_checked.contains(i) && selected != null) {
         reviews.add(
-          AnswerReview(question: questions[i], selectedIndex: selected),
+          AnswerReview(
+            question: _revealed[i] ?? questions[i],
+            selectedIndex: selected,
+          ),
         );
       }
     }

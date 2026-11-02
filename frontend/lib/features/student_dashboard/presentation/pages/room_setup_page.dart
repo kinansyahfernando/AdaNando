@@ -6,16 +6,39 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/responsive.dart';
 import '../../data/bank_lookup.dart';
-import '../../data/models/session_result.dart';
 import '../providers/room_provider.dart';
 import '../widgets/section_card.dart';
 import 'room_lobby_page.dart';
-import 'session_result_page.dart';
-import 'timed_quiz_page.dart';
+
+/// Susunan UTBK yang ditampilkan saat pilihan "UTBK" dipilih.
+/// Harus sama dengan backend/src/modules/tryout/tryout.config.js.
+const List<({String code, String name, int questions, int seconds})>
+_utbkSections = [
+  (code: 'PU', name: 'Penalaran Umum', questions: 30, seconds: 30 * 60),
+  (
+    code: 'PPU',
+    name: 'Pengetahuan dan Pemahaman Umum',
+    questions: 20,
+    seconds: 15 * 60,
+  ),
+  (
+    code: 'PBM',
+    name: 'Pemahaman Bacaan dan Menulis',
+    questions: 20,
+    seconds: 25 * 60,
+  ),
+  (code: 'PK', name: 'Pengetahuan Kuantitatif', questions: 20, seconds: 20 * 60),
+  (code: 'LBI', name: 'Literasi Bahasa Indonesia', questions: 30, seconds: 2550),
+  (code: 'LBE', name: 'Literasi Bahasa Inggris', questions: 20, seconds: 20 * 60),
+  (code: 'PM', name: 'Penalaran Matematika', questions: 20, seconds: 2550),
+];
 
 /// Form pengaturan sesi: pilih subtes, jumlah soal, dan durasi.
 /// - solo = true  -> Try Out Mandiri (langsung mulai, tanpa server)
 /// - solo = false -> Buat Room Belajar Bareng
+///
+/// Bila "UTBK" dipilih, jumlah soal dan waktu DIKUNCI (160 soal, 195 menit)
+/// sama seperti UTBK, jadi tidak bisa diatur.
 class RoomSetupPage extends StatefulWidget {
   const RoomSetupPage({super.key, required this.solo});
 
@@ -32,19 +55,27 @@ class RoomSetupPage extends StatefulWidget {
 class _RoomSetupPageState extends State<RoomSetupPage> {
   static const List<int> _durationOptions = [5, 10, 15, 30, 45, 60];
 
-  String _subtestId = mixSubtestId;
+  String _subtestId = utbkSubtestId;
   int _count = 10;
   int _minutes = 10;
   bool _loading = false;
 
-  int get _available => BankLookup.availableCount(_subtestId);
+  bool get _isUtbk => _subtestId == utbkSubtestId;
+
+  /// Batas atas jumlah soal per sesi (soal sebenarnya dipilih server).
+  int get _available => _isUtbk ? utbkTotalQuestions : 30;
 
   /// Jumlah soal yang dipakai, dijaga agar tidak melebihi soal tersedia.
+  /// Mode UTBK selalu 160.
   int get _effectiveCount {
+    if (_isUtbk) return utbkTotalQuestions;
     final available = _available;
     if (available <= 0) return 0;
     return min(max(_count, 1), available);
   }
+
+  /// Durasi (detik). Mode UTBK selalu 195 menit.
+  int get _effectiveSeconds => _isUtbk ? utbkTotalSeconds : _minutes * 60;
 
   void _showMessage(String text) {
     ScaffoldMessenger.of(context)
@@ -58,52 +89,17 @@ class _RoomSetupPageState extends State<RoomSetupPage> {
       _showMessage('Belum ada soal untuk pilihan ini.');
       return;
     }
-    if (widget.solo) {
-      _startSolo(count);
-    } else {
-      await _createRoom(count);
-    }
-  }
-
-  void _startSolo(int count) {
-    final subtest = BankLookup.subtestById(_subtestId);
-    final questions = BankLookup.pick(_subtestId, count);
-    final endsAt = DateTime.now().add(Duration(minutes: _minutes));
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => TimedQuizPage(
-          title: 'Try Out Mandiri',
-          subtest: subtest,
-          questions: questions,
-          remainingSeconds: () {
-            final ms = endsAt.difference(DateTime.now()).inMilliseconds;
-            return ms <= 0 ? 0 : (ms / 1000).ceil();
-          },
-          onFinish: (answers) async {
-            final result = SessionResult(
-              subtest: subtest,
-              questions: questions,
-              answers: answers,
-            );
-            return MaterialPageRoute<void>(
-              builder: (_) => SessionResultPage(result: result),
-            );
-          },
-        ),
-      ),
-    );
+    await _createRoom(count);
   }
 
   Future<void> _createRoom(int count) async {
     final provider = context.read<RoomProvider>();
-    final questions = BankLookup.pick(_subtestId, count);
 
     setState(() => _loading = true);
     final ok = await provider.createRoom(
       subtestId: _subtestId,
-      questionIds: questions.map((q) => q.id).toList(),
-      durationSeconds: _minutes * 60,
+      count: count,
+      durationSeconds: _effectiveSeconds,
     );
     if (!mounted) return;
 
@@ -113,6 +109,13 @@ class _RoomSetupPageState extends State<RoomSetupPage> {
       setState(() => _loading = false);
       _showMessage(provider.error ?? 'Gagal membuat room.');
     }
+  }
+
+  static String _minutesText(int seconds) {
+    final m = seconds / 60;
+    return m == m.roundToDouble()
+        ? '${m.round()} mnt'
+        : '${m.toStringAsFixed(1).replaceAll('.', ',')} mnt';
   }
 
   @override
@@ -161,9 +164,7 @@ class _RoomSetupPageState extends State<RoomSetupPage> {
                         children: [
                           for (final s in BankLookup.choices)
                             ChoiceChip(
-                              label: Text(
-                                s.id == mixSubtestId ? 'Campuran' : s.code,
-                              ),
+                              label: Text(s.code),
                               selected: s.id == _subtestId,
                               selectedColor: s.color.withAlpha(40),
                               onSelected: (_) =>
@@ -193,75 +194,84 @@ class _RoomSetupPageState extends State<RoomSetupPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(child: _Label('Jumlah soal')),
-                          Text(
-                            available == 0 ? '-' : '$count soal',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: color,
+                if (_isUtbk)
+                  _UtbkInfoCard(color: color, minutesText: _minutesText)
+                else ...[
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(child: _Label('Jumlah soal')),
+                            Text(
+                              available == 0 ? '-' : '$count soal',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: color,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      if (available >= 2)
-                        Slider(
-                          min: 1,
-                          max: available.toDouble(),
-                          divisions: available - 1,
-                          value: count.toDouble(),
-                          label: '$count',
-                          activeColor: color,
-                          onChanged: (v) => setState(() => _count = v.round()),
-                        )
-                      else
-                        const SizedBox(height: 6),
-                      Text(
-                        available == 0
-                            ? 'Belum ada soal untuk pilihan ini.'
-                            : 'Tersedia $available soal untuk pilihan ini.',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: AppColors.muted,
+                          ],
                         ),
-                      ),
-                    ],
+                        if (available >= 2)
+                          Slider(
+                            min: 1,
+                            max: available.toDouble(),
+                            divisions: available - 1,
+                            value: count.toDouble(),
+                            label: '$count',
+                            activeColor: color,
+                            onChanged: (v) =>
+                                setState(() => _count = v.round()),
+                          )
+                        else
+                          const SizedBox(height: 6),
+                        Text(
+                          available == 0
+                              ? 'Belum ada soal untuk pilihan ini.'
+                              : 'Maksimal $available soal per sesi. Bila bank soal lebih sedikit, jumlahnya menyesuaikan.',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _Label('Durasi'),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final m in _durationOptions)
-                            ChoiceChip(
-                              label: Text('$m menit'),
-                              selected: m == _minutes,
-                              selectedColor: color.withAlpha(40),
-                              onSelected: (_) => setState(() => _minutes = m),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Saran: sekitar 1–2 menit per soal.',
-                        style: TextStyle(fontSize: 12.5, color: AppColors.muted),
-                      ),
-                    ],
+                  const SizedBox(height: 14),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _Label('Durasi'),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final m in _durationOptions)
+                              ChoiceChip(
+                                label: Text('$m menit'),
+                                selected: m == _minutes,
+                                selectedColor: color.withAlpha(40),
+                                onSelected: (_) =>
+                                    setState(() => _minutes = m),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Saran: sekitar 1–2 menit per soal.',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 22),
                 FilledButton.icon(
                   onPressed: (_loading || count == 0) ? null : _submit,
@@ -294,6 +304,136 @@ class _RoomSetupPageState extends State<RoomSetupPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Pengganti kartu "Jumlah soal" + "Durasi" saat UTBK dipilih: nilainya terkunci.
+class _UtbkInfoCard extends StatelessWidget {
+  const _UtbkInfoCard({required this.color, required this.minutesText});
+
+  final Color color;
+  final String Function(int seconds) minutesText;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.lock_outline_rounded, size: 18, color: color),
+              const SizedBox(width: 8),
+              const Expanded(child: _Label('Soal & waktu sesuai UTBK')),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Jumlah soal dan waktu sudah ditetapkan dan tidak bisa diubah.',
+            style: TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.muted),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _Stat(
+                  value: '$utbkTotalQuestions',
+                  label: 'soal',
+                  color: color,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Stat(
+                  value: '${utbkTotalSeconds ~/ 60}',
+                  label: 'menit',
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 10),
+          for (final s in _utbkSections)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 42,
+                    child: Text(
+                      s.code,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      s.name,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${s.questions} soal · ${minutesText(s.seconds)}',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          const Text(
+            'Soal dikerjakan berurutan per subtes dalam satu waktu bersama. '
+            'Bila bank soal lebih sedikit dari 160, jumlahnya menyesuaikan.',
+            style: TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.value, required this.label, required this.color});
+
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withAlpha(24),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+          ),
+        ],
       ),
     );
   }

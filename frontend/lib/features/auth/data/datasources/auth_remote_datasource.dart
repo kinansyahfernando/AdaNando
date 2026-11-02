@@ -4,9 +4,14 @@ import '../../../../core/network/dio_client.dart';
 class AuthRemoteDataSource {
   final Dio _dio = DioClient.instance;
 
-  Future<Map<String, dynamic>> login(String email, String password) async {
+  Future<Map<String, dynamic>> config() async {
+    final response = await _dio.get('/auth/config');
+    return _handle(response);
+  }
+
+  Future<Map<String, dynamic>> login(String identifier, String password) async {
     final response = await _dio.post('/auth/login', data: {
-      'email': email,
+      'identifier': identifier,
       'password': password,
     });
     return _handle(response);
@@ -20,6 +25,27 @@ class AuthRemoteDataSource {
       'password': password,
     });
     return _handle(response);
+  }
+
+  Future<Map<String, dynamic>> me() async {
+    final response = await _dio.get('/auth/me');
+    return _handle(response);
+  }
+
+  Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
+    final response = await _dio.post('/auth/change-password', data: {
+      'oldPassword': oldPassword,
+      'newPassword': newPassword,
+    });
+    return _handle(response);
+  }
+
+  Future<void> logout() async {
+    try {
+      await _dio.post('/auth/logout');
+    } catch (_) {
+      // Tidak masalah bila gagal (mis. offline).
+    }
   }
 
   /// Karena validateStatus < 500, status 4xx tidak dilempar Dio.

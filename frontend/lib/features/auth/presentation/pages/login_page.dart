@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import 'register_page.dart';
-import '../../../student_dashboard/presentation/pages/student_dashboard_page.dart';
-import '../../../dashboard/admin/presentation/pages/admin_dashboard_page.dart'; 
 
+/// Layar login. Setelah berhasil, AuthGate (main.dart) otomatis menampilkan
+/// layar yang sesuai role, jadi tidak ada navigasi manual di sini.
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -13,110 +15,148 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _emailController = TextEditingController();
+  final _idController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _hide = true;
 
-  void _handleLogin() async {
-    final provider = Provider.of<AuthProvider>(context, listen: false);
-    final success = await provider.login(
-      _emailController.text.trim(),
-      _passwordController.text.trim(),
+  @override
+  void dispose() {
+    _idController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    final provider = context.read<AuthProvider>();
+    final ok = await provider.login(
+      _idController.text.trim(),
+      _passwordController.text,
     );
-
-    if (!mounted) return;
-
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Login Berhasil!'), backgroundColor: Colors.green),
+    if (!mounted || ok) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(provider.errorMessage ?? 'Login gagal'),
+          backgroundColor: AppColors.danger,
+        ),
       );
-
-      // --- LOGIKA ROUTING MENGGUNAKAN ROLE ASLI DARI BACKEND ---
-      final role = provider.userRole; 
-      
-      if (role == "admin") {
-        Navigator.pushAndRemoveUntil(
-          context, 
-          MaterialPageRoute(builder: (_) => const AdminDashboardPage()),
-          (Route<dynamic> route) => false, // Hapus riwayat halaman
-        );
-      } else {
-        Navigator.pushAndRemoveUntil(
-          context, 
-          MaterialPageRoute(builder: (_) => const StudentDashboardPage()),
-          (Route<dynamic> route) => false, // Hapus riwayat halaman
-        );
-      }
-      // ---------------------------------------------------------
-      
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(provider.errorMessage ?? 'Login Gagal'), backgroundColor: Colors.red),
-      );
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
+    final auth = context.watch<AuthProvider>();
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(Icons.school, size: 80, color: Colors.blue),
-              const SizedBox(height: 20),
-              const Text(
-                'AdaNando',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 40),
-              TextField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.email),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.lock),
-                ),
-              ),
-              const SizedBox(height: 24),
-              authProvider.isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: _handleLogin,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('MASUK', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              child: AutofillGroup(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Icon(Icons.school, size: 80, color: AppColors.primary),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'AdaNando',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                     ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () {
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RegisterPage()));
-                },
-                child: const Text('Belum punya akun? Daftar di sini'),
-              ),
-            ],
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Ujian & Try Out UTBK',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.muted),
+                    ),
+                    const SizedBox(height: 28),
+                    if (auth.notice != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.dangerSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: AppColors.danger,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(auth.notice!)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    TextField(
+                      controller: _idController,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.username],
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'NIS atau Email',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: _hide,
+                      autofillHints: const [AutofillHints.password],
+                      onSubmitted: (_) => _handleLogin(),
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _hide ? Icons.visibility_off : Icons.visibility,
+                          ),
+                          onPressed: () => setState(() => _hide = !_hide),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    auth.isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : FilledButton(
+                            onPressed: _handleLogin,
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                            ),
+                            child: const Text(
+                              'MASUK',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                    const SizedBox(height: 12),
+                    if (auth.allowRegister)
+                      TextButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const RegisterPage(),
+                          ),
+                        ),
+                        child: const Text('Belum punya akun? Daftar di sini'),
+                      )
+                    else
+                      const Text(
+                        'Belum punya akun? Minta ke admin atau wali kelas sekolahmu.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.muted, fontSize: 13),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

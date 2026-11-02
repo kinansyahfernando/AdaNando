@@ -1,13 +1,13 @@
 import 'bank_lookup.dart';
-import 'models/question.dart';
 import 'models/session_result.dart';
 import 'models/subtest.dart';
 import 'models/tryout.dart';
 import 'room_repository.dart' show ApiException;
 import 'tryout_repository.dart';
 
-/// Satu sesi Try Out Mandiri di HP: menyimpan soal tiap subtes, hasil, dan
-/// sinkronisasi waktu dengan server. Waktu yang berlaku selalu waktu server.
+/// Satu sesi ujian di perangkat siswa. Semua yang menentukan nilai ada di
+/// server: soal dikirim per bagian tanpa kunci, jawaban disimpan ke server,
+/// nilai dihitung server. Waktu yang berlaku selalu jam server.
 class TryoutSession {
   TryoutSession({TryoutRepository? repository})
     : _repo = repository ?? TryoutRepository();
@@ -16,20 +16,21 @@ class TryoutSession {
 
   late TryoutState state;
 
-  /// Selisih jam server - jam HP.
+  /// Selisih jam server - jam perangkat.
   int _offsetMs = 0;
 
-  final Map<int, List<Question>> _questions = {};
+  final Map<int, SectionData> _sections = {};
 
-  /// Hasil per subtes (indeks subtes -> hasil). Subtes tanpa hasil = tidak dikerjakan.
+  /// Hasil per bagian untuk halaman hasil (diisi oleh [loadResults]).
   final Map<int, SessionResult> results = {};
 
-  /// Diisi bila try out diakhiri dari HP: 'violation' | 'quit'.
-  String? clientEndReason;
+  /// Daftar pembahasan per bagian (bila server mengizinkan).
+  List<ReviewSection> reviews = const [];
+  bool resultsLoaded = false;
 
   List<TryoutSectionConfig> get sections => state.sections;
 
-  String? get endReason => clientEndReason ?? state.endReason;
+  String? get endReason => state.endReason;
 
   int _nowMs() => DateTime.now().millisecondsSinceEpoch;
 
@@ -40,14 +41,21 @@ class TryoutSession {
     state = s;
   }
 
-  /// Mulai try out baru di server.
-  Future<void> begin() async {
+  /// Mulai (atau lanjutkan) ujian di server.
+  Future<void> begin(int examId, {String? token}) async {
     final t0 = _nowMs();
-    final s = await _repo.start();
+    final s = await _repo.start(examId, token: token);
     _apply(s, t0);
   }
 
-  /// Sisa waktu subtes [index] (detik), berdasarkan jam server.
+  /// Lanjutkan percobaan yang masih berjalan.
+  Future<void> resume(int attemptId) async {
+    final t0 = _nowMs();
+    final s = await _repo.fetch(attemptId);
+    _apply(s, t0);
+  }
+
+  /// Sisa waktu bagian [index] (detik), berdasarkan jam server.
   int remainingSeconds(int index) {
     if (!state.isRunning || index != state.currentSection) return 0;
     final endsAt = state.sectionEndsAt;
@@ -56,24 +64,39 @@ class TryoutSession {
     return ms <= 0 ? 0 : (ms / 1000).ceil();
   }
 
-  List<Question> questionsFor(int index) {
-    return _questions.putIfAbsent(
-      index,
-      () => BankLookup.pickCycled(sections[index].id, sections[index].questions),
-    );
+  /// Ambil soal bagian yang sedang berjalan dari server.
+  Future<SectionData> loadSection(int index) async {
+    final cached = _sections[index];
+    if (cached != null) return cached;
+    final t0 = _nowMs();
+    final data = await _repo.section(state.attemptId);
+    final t1 = _nowMs();
+    _offsetMs = (data.serverNow - (t0 + t1) / 2).round();
+    _sections[data.sectionIndex] = data;
+    return data;
   }
 
-  Subtest subtestFor(int index) => BankLookup.subtestById(sections[index].id);
-
-  SessionResult buildResult(int index, Map<int, int> answers) {
-    return SessionResult(
-      subtest: subtestFor(index),
-      questions: questionsFor(index),
-      answers: answers,
-    );
+  Subtest subtestFor(int index) {
+    final sec = sections[index];
+    return BankLookup.forSection(sec.id, sec.name);
   }
 
-  /// Sinkron ulang waktu & status dengan server. Gagal = diabaikan.
+  /// Simpan jawaban sementara ke server (autosave). Gagal = diabaikan,
+  /// jawaban lengkap tetap dikirim saat bagian dikumpulkan.
+  Future<void> autosave(int index, Map<int, int> answers) async {
+    try {
+      await _repo.saveAnswers(
+        state.attemptId,
+        sectionIndex: index,
+        answers: answers,
+      );
+    } catch (_) {
+      // Sinyal putus: coba lagi pada perubahan jawaban berikutnya.
+    }
+  }
+
+  /// Sinkron ulang waktu & status dengan server (sekaligus "detak jantung"
+  /// yang memberi tahu pengawas bahwa siswa masih terhubung).
   Future<void> sync() async {
     final t0 = _nowMs();
     try {
@@ -84,50 +107,110 @@ class TryoutSession {
     }
   }
 
-  /// Kumpulkan satu subtes. True bila selesai diproses (server menerima, atau
-  /// menolak dengan alasan pasti). False bila gagal karena jaringan -> boleh dicoba lagi.
-  Future<bool> submitSection(int index, SessionResult result) async {
+  /// Kumpulkan satu bagian. True bila server memprosesnya; false bila gagal
+  /// karena jaringan (boleh dicoba lagi).
+  Future<bool> submitSection(int index, Map<int, int> answers) async {
     final t0 = _nowMs();
     try {
       final s = await _repo.submitSection(
         state.attemptId,
         sectionIndex: index,
-        correct: result.correct,
-        wrong: result.wrong,
+        answers: answers,
       );
       _apply(s, t0);
-      results[index] = result;
       return true;
     } on ApiException {
-      results[index] = result;
-      await sync();
+      await sync(); // ditolak server (mis. waktu habis): ikuti status server
       return true;
     } catch (_) {
       return false;
     }
   }
 
-  /// Akhiri seluruh try out lebih awal. Tidak pernah melempar error:
-  /// hasil di HP tetap ditampilkan walau server tidak terjangkau.
+  /// Siswa memilih keluar. Tidak pernah melempar error.
   Future<void> finish({
-    required String reason,
     required int index,
-    required SessionResult result,
+    required Map<int, int> answers,
   }) async {
-    clientEndReason = reason;
-    results[index] = result;
     try {
       final t0 = _nowMs();
       final s = await _repo.finish(
         state.attemptId,
-        reason: reason,
         sectionIndex: index,
-        correct: result.correct,
-        wrong: result.wrong,
+        answers: answers,
       );
       _apply(s, t0);
     } catch (_) {
-      // Server akan menutup sendiri saat waktu habis / try out baru dimulai.
+      await sync();
     }
+  }
+
+  /// Laporkan pelanggaran. Null = jaringan gagal (akan dicoba lagi).
+  Future<TryoutState?> reportViolation({
+    required String type,
+    required int index,
+    required Map<int, int> answers,
+  }) async {
+    try {
+      final t0 = _nowMs();
+      final s = await _repo.violation(
+        state.attemptId,
+        type: type,
+        sectionIndex: index,
+        answers: answers,
+      );
+      _apply(s, t0);
+      return s;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Muat nilai + pembahasan untuk halaman hasil.
+  Future<void> loadResults() async {
+    final t0 = _nowMs();
+    final s = await _repo.fetch(state.attemptId);
+    _apply(s, t0);
+
+    results.clear();
+    reviews = const [];
+
+    if (state.reviewAvailable) {
+      try {
+        reviews = await _repo.review(state.attemptId);
+      } catch (_) {
+        reviews = const [];
+      }
+    }
+
+    final score = state.result;
+    for (var i = 0; i < sections.length; i++) {
+      final sub = subtestFor(i);
+      final review = i < reviews.length ? reviews[i] : null;
+      final sc = (score != null && i < score.sections.length)
+          ? score.sections[i]
+          : null;
+      if (sc != null && !sc.worked && review == null) continue; // tidak dikerjakan
+      if (review != null) {
+        results[i] = SessionResult(
+          subtest: sub,
+          questions: review.questions,
+          answers: review.answers,
+          fixedTotal: sc?.total,
+          fixedCorrect: sc?.correct,
+          fixedWrong: sc?.wrong,
+        );
+      } else if (sc != null) {
+        results[i] = SessionResult(
+          subtest: sub,
+          questions: const [],
+          answers: const {},
+          fixedTotal: sc.total,
+          fixedCorrect: sc.correct,
+          fixedWrong: sc.wrong,
+        );
+      }
+    }
+    resultsLoaded = true;
   }
 }

@@ -14,7 +14,7 @@ class ResultEntry {
   final int id;
   final String subtestId;
 
-  /// 'latihan' | 'tryout'
+  /// 'latihan' | 'tryout' | 'ujian'
   final String source;
   final int total;
   final int correct;
@@ -26,7 +26,7 @@ class ResultEntry {
 
   int get blank => total - correct - wrong;
   double get accuracy => total == 0 ? 0 : correct / total;
-  bool get isTryout => source == 'tryout';
+  bool get isTryout => source == 'tryout' || source == 'ujian';
   DateTime get date => DateTime.fromMillisecondsSinceEpoch(createdAt);
 
   static int _int(dynamic v) {

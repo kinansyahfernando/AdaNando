@@ -13,6 +13,24 @@ class AnswerReviewList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Kunci belum dibuka server (mis. teman belum selesai / ujian belum ditutup).
+    if (result.questions.any((q) => !q.hasKey)) {
+      return const SectionCard(
+        padding: EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Icon(Icons.lock_clock_outlined, color: AppColors.muted),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Kunci jawaban dan pembahasan dibuka setelah semua peserta selesai atau waktu habis.',
+                style: TextStyle(color: AppColors.muted),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
